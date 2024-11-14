@@ -1,6 +1,6 @@
 # snake
 a very crude snake game using cpp. ( just for pactice :p )
-actually you can lose in this game because you wont lose when the snake hit the wall. rather it will "eat" through the wall.
+actually you cant lose in this game because you wont lose when the snake hit the wall. rather it will "eat" through the wall.
 (just for fun :p)
 
 theoretically working both on Linux and Windows.
