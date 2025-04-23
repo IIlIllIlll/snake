@@ -1,7 +1,48 @@
+#define FPS 200000
 #include<random>
 #include<iostream>
-#include<unistd.h>
+
+#ifdef _WIN32
 #include<conio.h>
+#include<windows.h>
+
+#else
+#include<termios.h>
+#include<sys/ioctl.h>
+#include<unistd.h>
+int _kbhit(){
+	//get the fd of stdin
+	static bool inited = false;
+	int STDIN = fileno(stdin);
+	termios attr;
+	//set new tty and save original attribution
+	if(!inited){
+		tcgetattr(STDIN, &attr);
+		attr.c_lflag &= ~ICANON;
+		attr.c_lflag &= ~ECHO;
+		tcsetattr(STDIN, TCSANOW, &attr);
+	}
+	//get bytes in waiting
+	int bytes=0;
+	ioctl(0, FIONREAD, &bytes);
+	return bytes;
+}
+
+char getch(){
+	int STDIN= 0;//fileno(stdin);
+	termios attr;
+	tcgetattr(STDIN, &attr);
+	attr.c_lflag &= ~(ECHO | ICANON);
+	tcsetattr(STDIN, TCSANOW, &attr);
+	attr.c_lflag &= (ICANON | ECHO);
+	char a=getchar();
+	tcflush(STDIN, TCIOFLUSH);
+	tcsetattr(STDIN, TCSANOW, &attr);
+	return a;
+}
+
+#endif
+
 using namespace std;
 
 const int width=42;
@@ -12,12 +53,12 @@ int x_offset=0, y_offset=0;
 void setloc(int x, int y){
 	for(int i=0; i<x; i++){
 		cout<<"\033[C";
-		x_offset++;
 	}
 	for(int i=0; i<y; i++){
 		cout<<"\033[A";
-		y_offset++;
 	}
+	x_offset=x, y_offset=y;
+	cout.flush();
 }
 
 void resetloc(int char_num = 1){
@@ -33,99 +74,87 @@ void resetloc(int char_num = 1){
 		cout<<"\033[B";
 		y_offset--;
 	}
+	cout.flush();
 }
-
 
 class snake
 {
-	int x_init=width/2, y_init=height/2;//head initial coordinate
+	int tail_remain[2];
 
 public:
-	int lenth=3;//initial lenth
-	int x[20000]={x_init, x_init, x_init}, y[20000]={y_init, y_init-1, y_init-2};
-	bool eat=0;
+	int x[100], y[100];
+	int length=2;
 	char dir='w';
-
-	
-	snake(){
-		setloc(x_init, y_init);
-		cout<<"@";//draw head
+	snake()
+	{
+		x[0]=width/2, y[0]=height/2;
+		x[1]=width/2, y[1]=height/2-1;
+		tail_remain[0]=x[length-1], tail_remain[1]=y[length-1];
+		setloc(x[0], y[0]);
+		cout<<"@";
 		resetloc();
-
-		setloc(x_init, y_init-1);
-		cout<<"@";//draw initial body
-		resetloc();
-		
-		setloc(x_init, y_init-2);
-		cout<<"@";//draw butt
+		setloc(x[1], y[1]);
+		cout<<"@";
 		resetloc();
 	}
 
-	
 	void move(){
-		if(!eat){
-			setloc(x[lenth-1], y[lenth-1]);
-			cout<<" ";
-			resetloc();
+		tail_remain[0]=x[length-1], tail_remain[1]=y[length-1];	
+		for(int i=length-1; i>0; i--){
+			x[i]=x[i-1];
+			y[i]=y[i-1];
 		}
-		else lenth++;
-
 		switch(dir){
-			case 'w': 
-				setloc(x[0], y[0]+1);
-				cout<<"@";
-				resetloc();
-				for(int i=lenth-1; i>0; i--){
-					x[i]=x[i-1];
-					y[i]=y[i-1];
-				};
+			case 'w':
 				y[0]++;
 				break;
-
-			case 'a': 
-				setloc(x[0]-1, y[0]);
-				cout<<"@";
-				resetloc();
-				for(int i=lenth-1; i>0; i--){
-					x[i]=x[i-1];
-					y[i]=y[i-1];
-				};
-				x[0]--;
-				break;
-
 			case 's':
-				setloc(x[0], y[0]-1);
-				cout<<"@";
-				resetloc();
-				for(int i=lenth-1; i>0; i--){
-					x[i]=x[i-1];
-					y[i]=y[i-1];
-				}
 				y[0]--;
 				break;
-
+			case 'a':
+				x[0]--;
+				break;
 			case 'd':
-				setloc(x[0]+1, y[0]);
-				cout<<"@";
-				resetloc();
-				for(int i=lenth-1; i>0; i--){
-					x[i]=x[i-1];
-					y[i]=y[i-1];
-				}
 				x[0]++;
 				break;
+		}
+		draw();
+	}
+
+
+	void eat(){
+		length++;
+		x[length-1]=tail_remain[0], y[length-1]=tail_remain[1];
+	}
+private:
+	void draw(){	
+		setloc(tail_remain[0], tail_remain[1]);
+		cout<<" ";
+		resetloc();
+		for(int i=0; i<length; i++){
+			setloc(x[0], y[0]);
+			cout<<"@";
+			resetloc();
 		}
 	}
 };
 
-
-
 class bonus
 {
 public:
-	void spawn(int x, int y){
+	int x, y;
+
+	bonus(): x(1), y(height - 1){;} 
+
+	void spawn(){
+		static mt19937 rand1;
+		static mt19937 rand2;
+		static uniform_int_distribution<int> x_pos(1, width-2);
+		static uniform_int_distribution<int> y_pos(1, height-2);
+		x=x_pos(rand1);
+		y=y_pos(rand2);
 		setloc(x, y);
-		cout<<"o";
+		cout<<"O";
 		resetloc();
 	}
 };
@@ -134,6 +163,7 @@ public:
 
 int main(){
 //game area
+	printf("\033[?25l");
 	int score=0;
 	cout<<"Press 0 (zero) to exit"<<endl<<"score: "<<score<<endl;
 	for(int i=0; i<width; i++){
@@ -159,13 +189,7 @@ int main(){
 
 //bonus spawn
 	bonus bonus;
-	mt19937 rand1;
-	mt19937 rand2;
-	uniform_int_distribution<int> x_pos(1, width-2);
-	uniform_int_distribution<int> y_pos(1, height-2);
-	int x=x_pos(rand1);
-	int y=y_pos(rand2);
-	bonus.spawn(x, y);
+	bonus.spawn();
 
 //snake move
 	while(snake.dir!='0'){
@@ -173,10 +197,9 @@ int main(){
 			snake.dir=getch();
 		}
 		snake.move();
-		snake.eat=0;
-		if(snake.x[0]==x && snake.y[0]==y){
-			snake.eat=1;
+		if(snake.x[0]==bonus.x && snake.y[0]==bonus.y){
 			score++;
+			snake.eat();
 			setloc(7, height);
 			cout<<score;
 			int t=0, temp=score;
@@ -185,13 +208,16 @@ int main(){
 				t++;
 			}
 			resetloc(t);
-			x=x_pos(rand1);
-			y=y_pos(rand2);
-			bonus.spawn(x, y);
+			bonus.spawn();
 		}
-		usleep(400000);
+#ifdef _WIN32
+		Sleep(FPS/10000);
+#else
+		usleep(FPS);
+#endif
 	}
-/***************DEBUG*************************
+	printf("\033[?25h");
+/***************LOCATE*************************
 	setloc(0, 0);
 	cout<<"$";
 	resetloc();
@@ -207,7 +233,8 @@ int main(){
 	setloc(width-1, height-1);
 	cout<<"$";
 	resetloc();
-
-	sleep(5);
-******************DEBUG********************/
+	
+	cout.flush();
+	usleep(5000000);
+******************DEBUG***********************/
 }
